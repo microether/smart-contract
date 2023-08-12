@@ -2,23 +2,24 @@
 pragma solidity ^0.8.0;
 
 contract MicroLoan {
+
     enum RepaymentMethod { Monthly, Quarterly, Yearly }
-    enum CollateralType { Social, Uncollateralised }
+    enum LoanType { Uncollateralized, SocialCollateral }
 
     struct Loan {
-        uint256 loanAmount;
+        uint256 amount;
         uint256 dueDate;
         RepaymentMethod repaymentMethod;
-        CollateralType collateralType;
-        uint256 interestRate; // expressed as a percentage for simplicity
-        address payable borrower;
-        address[] guarantors;
+        LoanType loanType;
+        uint8 numGuarantors; // New field to store the number of desired guarantors.
+        uint8 actualGuarantors; // Actual guarantors who vouched.
         bool isFunded;
     }
 
-    uint256 public loanCounter = 0;
+    uint256 private loanIDCounter = 0;
+    mapping(address => uint256) public creditScores;
     mapping(uint256 => Loan) public loans;
-    mapping(address => int) public creditScore;
+    mapping(uint256 => address[]) public loanGuarantors;
 
     uint256 constant MIN_GUARANTORS = 10;
     int constant UNC_COLLATERAL_THRESHOLD = 50;
@@ -35,14 +36,14 @@ contract MicroLoan {
 
     constructor() {
         // Set initial credit score for new users
-        creditScore[msg.sender] = 0;
+        creditScores[msg.sender] = 0;
     }
 
-    function calculateInterestRate(address borrower, CollateralType collateral) private view returns (uint256) {
-        int score = creditScore[borrower];
+    function calculateInterestRate(address borrower, LoanType collateral) private view returns (uint256) {
+        int score = creditScores[borrower];
         
         // Sample dynamic interest rate calculation
-        if(collateral == CollateralType.Social) {
+        if(collateral == LoanType.SocialCollateral) {
             if(score > 80) return 2; // 2%
             else if(score > 60) return 4; 
             else return 6;
@@ -53,28 +54,36 @@ contract MicroLoan {
         }
     }
 
-    function applyForLoan(uint256 _loanAmount, uint256 _dueDate, RepaymentMethod _repaymentMethod, CollateralType _collateralType) external returns(uint256) {
-        require(creditScore[msg.sender] > MINIMUM_SCORE, "Credit score too low");
-        if (_collateralType == CollateralType.Uncollateralised) {
-            require(creditScore[msg.sender] >= UNC_COLLATERAL_THRESHOLD, "Credit score insufficient for uncollateralised loan");
+    function applyForLoan(
+        uint256 _loanAmount,
+        uint256 _dueDate,
+        RepaymentMethod _repaymentMethod,
+        LoanType _loanType,
+        uint8 _numGuarantors // New parameter for desired number of guarantors.
+    ) public returns (uint256) {
+        require(creditScores[msg.sender] >= -70, "Credit score too low");
+        require(_numGuarantors >= 1 && _numGuarantors <= 20, "Invalid number of guarantors");
+        
+        if(_loanType == LoanType.Uncollateralized) {
+            require(creditScores[msg.sender] > 50, "Credit score not sufficient for uncollateralized loan");
+        } else if(_loanType == LoanType.SocialCollateral) {
+            creditScores[msg.sender] += _numGuarantors; // Increase credit score for each guarantor chosen.
+            if (creditScores[msg.sender] > 100) {
+                creditScores[msg.sender] = 100; // Cap credit score at 100.
+            }
         }
 
-        uint256 interestRate = calculateInterestRate(msg.sender, _collateralType);
-        
-        loans[loanCounter] = Loan({
-            loanAmount: _loanAmount,
+        loanIDCounter++;
+        loans[loanIDCounter] = Loan({
+            amount: _loanAmount,
             dueDate: _dueDate,
             repaymentMethod: _repaymentMethod,
-            collateralType: _collateralType,
-            interestRate: interestRate,
-            borrower: payable(msg.sender),
-            guarantors: new address[](0),
+            loanType: _loanType,
+            numGuarantors: _numGuarantors,
+            actualGuarantors: 0,
             isFunded: false
         });
-
-        emit LoanApplied(loanCounter, msg.sender);
-        loanCounter++;
-        return loanCounter - 1;
+        return loanIDCounter;
     }
 
     function guaranteeLoan(uint256 _loanId) external {
@@ -109,6 +118,21 @@ contract MicroLoan {
             }
         }
     }
+
+
+    function vouchForLoan(uint256 _loanID) public {
+        Loan storage loan = loans[_loanID];
+        require(loan.loanType == LoanType.SocialCollateral, "Can only vouch for social collateral loans");
+        require(loan.actualGuarantors < loan.numGuarantors, "Already has enough guarantors");
+
+        loanGuarantors[_loanID].push(msg.sender);
+        loan.actualGuarantors++;
+
+        if (loan.actualGuarantors == loan.numGuarantors) {
+            // If desired number of guarantors is reached, you can implement funding logic here.
+        }
+    }
+
 
     function addFunds() external payable {}
 
