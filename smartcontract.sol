@@ -1,8 +1,27 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 import "./LiquidityPool.sol";
+import "https://github.com/molecule-protocol/molecule-core/blob/main/src/v2/interfaces/IMoleculeController.sol";
+import "./MyCustomController.sol";
 
 contract MicroEther {
+    MyCustomController public myCustomController; //can be used for additional conditions to control the transactions
+    // in order to prevent them
+    IMoleculeController public moleculeGeneralSanctionController;
+    uint[] public regionalIds;
+    constructor(MyCustomController _myCustomController, IMoleculeController _moleculeGeneralSanctionController) {
+        myCustomController = _myCustomController; //can be used for additional conditions to control the transactions
+    // in order to prevent them
+        moleculeGeneralSanctionController = _moleculeGeneralSanctionController;
+    }
+    function addRegionalId(uint _regionalId) external {
+        regionalIds.push(_regionalId);
+    }
+    /*function myFunction() external {
+        require(moleculeGeneralSanctionController.check(regionalIds, msg.sender), "Address is sanctioned.");
+        require(myCustomController.check(msg.sender), "Address is not authorized.");
+        // Access allowed to function code here
+    }*/
 
     LiquidityPool private liquidityPool;
 
@@ -73,6 +92,7 @@ contract MicroEther {
         LoanType _loanType,
         int8 _numGuarantors
     ) public returns (uint256) {
+        require(moleculeGeneralSanctionController.check(regionalIds, msg.sender), "Address is sanctioned."); 
         require(creditScores[msg.sender] >= MINIMUM_SCORE, "Credit score too low");
         require(_numGuarantors >= 1 && _numGuarantors <= 20, "Invalid number of guarantors");
         
