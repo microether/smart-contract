@@ -1,6 +1,27 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+// ******** Mock LiquidityPool ********
+contract LiquidityPool {
+    uint256 public poolBalance; // Tracking the pool's balance
+    
+    // For demonstration, let's set an initial balance for the liquidity pool.
+    constructor(uint256 initialBalance) {
+        poolBalance = initialBalance;
+    }
+
+    function deposit(uint256 amount) external {
+        poolBalance += amount;
+    }
+
+    function withdraw(uint256 amount) external {
+        require(poolBalance >= amount, "Not enough funds in the pool");
+        poolBalance -= amount;
+    }
+}
+
+// ******** MicroLoan ********
+
 contract MicroLoan {
 
     enum RepaymentMethod { Monthly, Quarterly, Yearly }
@@ -36,10 +57,14 @@ contract MicroLoan {
     event LoanGuaranteed(uint256 loanId, address indexed guarantor);
     event LoanFunded(uint256 loanId);
 
-    constructor() {
-        // Set initial credit score for new users
+    LiquidityPool private liquidityPool;
+
+    constructor(address _liquidityPool) {
+        liquidityPool = LiquidityPool(_liquidityPool);
+        // Rest of the constructor
         creditScores[msg.sender] = 0;
     }
+
 
     function calculateInterestRate(address borrower, LoanType collateral) private view returns (uint256) {
         int score = creditScores[borrower];
@@ -112,7 +137,7 @@ contract MicroLoan {
     function repayLoan(uint256 _loanId) external payable {
         Loan storage loan = loans[_loanId];
         require(msg.sender == loan.borrower, "Only the borrower can repay");
-        uint256 expectedRepayment = loan.amount + ((loan.amount * loan.interestRate) / 100);
+        uint256 expectedRepayment = loans[_loanId].amount + (loans[_loanId].amount * calculateInterestRate(loans[_loanId].borrower, loans[_loanId].loanType) / 100);
         require(msg.value == expectedRepayment, "Incorrect repayment amount");
 
         if (block.timestamp <= loan.dueDate) {
@@ -132,6 +157,9 @@ contract MicroLoan {
         // The "owner" could be a multi-signature wallet, another smart contract, or a centralized entity.
         address payable owner = payable(address(this));  // Replace with the desired address
         owner.transfer(msg.value);
+        
+        // Repay the liquidity pool
+        liquidityPool.deposit(msg.value);
     }
 
     function vouchForLoan(uint256 _loanID) public {
@@ -147,6 +175,21 @@ contract MicroLoan {
             // For example, you might notify the borrower that their loan is now fully vouched for.
             emit LoanFunded(_loanID);
         }
+    }
+
+    // Modified function when loan is funded
+    function fundLoan(uint256 _loanId) internal {
+        Loan storage loan = loans[_loanId];
+        require(loan.isFunded == false, "Loan already funded");
+        uint256 interest = calculateInterestRate(msg.sender, loan.loanType);
+        uint256 totalAmount = loan.amount + (loan.amount * interest / 100);
+
+        // Withdraw funds from the liquidity pool
+        liquidityPool.withdraw(totalAmount);
+
+        loan.isFunded = true;
+        payable(msg.sender).transfer(totalAmount);  // sending funds to the borrower
+        emit LoanFunded(_loanId);
     }
 
     function addFunds() external payable {}
