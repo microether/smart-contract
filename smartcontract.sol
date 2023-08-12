@@ -57,15 +57,34 @@ contract MicroEtherContract {
 
 struct Owner {
     address payable ownerAddress;
+    //add some attributes
 }
 
 struct Borrower {
-    address payable borrowerAddress;
-    uint loanAmount;
-    uint groupID;
-    uint dueDate;
-    bool paymentMethod; //true = once a month, false = in the end of duedate
+    address payable userAddress;
+    Loan[] loans;
+    uint creditScore;
 }
+
+struct Guarantor {
+    address payable guarantorAddress;
+    Loan[] loans;
+    uint creditScore;
+   
+}
+
+struct User {
+    address payable userAddress;
+
+    Loan[] loansTaken;
+    uint creditScore;
+    Loan[] loansGuaranteed;
+
+    uint successfulTLoansNum; //successful taken loans
+    uint successfulVLoansNum; //successful guaranteed loans
+}
+
+
 
 struct Group {
     uint totalLoanAmount;
@@ -74,6 +93,35 @@ struct Group {
     Borrower[] members;
 }
 
+struct Loan {
+    uint loanID;
+    address borrowerAddress;
+    uint amount;
+    uint dueDate;
+    uint groupID;
+    bool paymentMethod; //true = once a month, false = in the end of duedate
+}
+
+function validate(uint loanID) {
+
+}
+
+function totalSumOfLoans(Borrower borrower) external view returns (uint256) {
+        uint sum = 0;
+       for (uint i=0; i<borrower.loans.length; i++){
+        sum += borrower.loans[i];
+       }
+       return sum;
+}
+
+function checkCreditEligibility(address user, uint256 requiredScore) external view returns (bool) {
+        return userCreditScores[user] >= requiredScore && ;
+}
+
+function applyForLoan(uint amount, uint dueDate, uint groupID, bool paymentMethod) {
+
+
+}
 
 
 }
