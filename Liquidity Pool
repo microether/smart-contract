@@ -1,45 +1,16 @@
-To connect the two contracts, you've already done a significant portion of the work by creating a reference to the `LiquidityPool` contract within the `MicroLoan` contract using:
+function calculateInterestRate(address borrower, LoanType collateral) private view returns (uint256) {
+    int score = creditScores[borrower];
+    uint256 Rmin;
+    uint256 Rmax;
 
-```solidity
-LiquidityPool private liquidityPool;
-```
-
-and initializing it in the constructor:
-
-```solidity
-constructor(address _liquidityPool) {
-    liquidityPool = LiquidityPool(_liquidityPool);
-    ...
+    if(collateral == LoanType.SocialCollateral) {
+        Rmin = 2;
+        Rmax = 6;
+    } else {
+        Rmin = 10;
+        Rmax = 15;
+    }
+    
+    uint256 R = Rmin + ((Rmax - Rmin) * (100 - uint256(score))) / 200;
+    return R;
 }
-```
-
-However, if you want the `LiquidityPool` address to always be the same and not have to enter it manually when deploying the `MicroLoan` contract, you have a few options:
-
-1. **Deploy `LiquidityPool` and then hardcode its address in `MicroLoan`:** After deploying the `LiquidityPool` contract, you can take its deployed address and hardcode it into the `MicroLoan` contract. This way, whenever you deploy the `MicroLoan` contract, it will always point to the same `LiquidityPool` address.
-
-2. **Deploy `LiquidityPool` from within the `MicroLoan` constructor:** You can modify the `MicroLoan` contract to deploy a new instance of the `LiquidityPool` contract whenever the `MicroLoan` contract is deployed. This way, each `MicroLoan` contract will have its own associated `LiquidityPool`.
-
-Given that you want the `LiquidityPool` address to always be the same, option 1 might be more suitable. Here's how you can implement it:
-
-1. Deploy `LiquidityPool` contract and get its deployed address.
-2. Modify the `MicroLoan` contract:
-
-```solidity
-// Add the hardcoded address of LiquidityPool
-address constant LIQUIDITY_POOL_ADDRESS = 0xYourDeployedLiquidityPoolAddressHere;
-
-...
-
-// Modify the constructor to use the hardcoded address
-constructor() {
-    liquidityPool = LiquidityPool(LIQUIDITY_POOL_ADDRESS);
-    ...
-}
-```
-
-This approach ensures that every time you deploy `MicroLoan`, it will always reference the same `LiquidityPool` address.
-
-A few things to consider:
-- Hardcoding an address can be risky in case you want to upgrade or change the `LiquidityPool` in the future. Ensure that this is what you really want.
-- Always ensure that the hardcoded address is correct to avoid potential loss of funds or other critical issues. 
-- It might be good to keep a function (restricted to owner/admin) that can change the `LiquidityPool` address if ever needed in the future. This provides a level of flexibility.
