@@ -1,28 +1,98 @@
-contract LoanContract {
-    address public owner;
-    ILiquidityPool public liquidityPool;
-    IERC20 public token;  // Assuming the liquidity pool's token is ERC20 compliant.
+contract MicroEther {
 
-    constructor(address _liquidityPool, address _token) {
-        owner = msg.sender;
-        liquidityPool = ILiquidityPool(_liquidityPool);
-        token = IERC20(_token);
+    struct Borrower {
+        address borrowerAddress;
+        int creditScore;
+        int totalLoansTaken;
+        int successfulRepayments;
+        bool hasTangibleCollateral;
     }
+
+    mapping(address => Borrower) public borrowers;
+    mapping(address => address[]) public socialCollateral; // mapping borrowers to their validators
+
+    address owner;
 
     modifier onlyOwner() {
-        require(msg.sender == owner, "Not the contract owner");
+        require(msg.sender == owner, "Not owner");
         _;
     }
-    
-    function transferLiquidityToLoaner(address loaner, uint256 amount) external onlyOwner {
-        require(token.balanceOf(address(this)) >= amount, "Not enough liquidity");
+
+    // Initial setup
+    constructor() public {
+        owner = msg.sender;
+    }
+
+    // Borrower onboarding
+    function onboardBorrower(address _borrower, bool _hasTangibleCollateral) public onlyOwner {
+        require(VALIDATE_WITH_WORLD_ID(_borrower), "Invalid World ID");
+        require(VALIDATE_WITH_Molecule_Protocol(_borrower), "Failed Molecule Protocol Check");
+        borrowers[_borrower] = Borrower({
+            borrowerAddress: _borrower,
+            creditScore: 0,
+            totalLoansTaken: 0,
+            successfulRepayments: 0,
+            hasTangibleCollateral: _hasTangibleCollateral
+        });
+    }
+
+    // Add social collateral
+    function addSocialCollateral(address validator) public {
+        require(borrowers[msg.sender].borrowerAddress != address(0), "Borrower not registered");
+        require(borrowers[validator].borrowerAddress != address(0), "Validator not a registered borrower");
+        require(socialCollateral[msg.sender].length < 50, "Max validators reached");
+        socialCollateral[msg.sender].push(validator);
+    }
+
+    function applyForLoan(uint amount) public returns(bool) {
+        Borrower memory borrower = borrowers[msg.sender];
         
-        // Transfer the tokens from this contract to the loaner
-        require(token.transfer(loaner, amount), "Transfer failed");
+        int historyImpact = (borrower.successfulRepayments / borrower.totalLoansTaken) * 100 - 100;
+        int socialCollateralImpact = int(socialCollateral[msg.sender].length);
+        if(socialCollateralImpact > 20) {
+            socialCollateralImpact = 20; 
+        }
+        int tangibleCollateralImpact = borrower.hasTangibleCollateral ? 40 : 0;
+        int creditScore = historyImpact + socialCollateralImpact + tangibleCollateralImpact;
+
+        require(creditScore >= -60, "Credit score too low");
+        borrower.creditScore = creditScore;
+
+        // Distribute funds logic here
+
+        return true;
     }
-    
-    // In case you need to get liquidity into this contract
-    function depositLiquidity(uint256 amount) external {
-        require(token.transferFrom(msg.sender, address(this), amount), "TransferFrom failed");
+
+    function loanRepayment(bool success) public {
+        Borrower storage borrower = borrowers[msg.sender];
+        borrower.totalLoansTaken += 1;
+        if(success) {
+            borrower.successfulRepayments += 1;
+            borrower.creditScore += calculatePositiveImpact();
+        } else {
+            borrower.creditScore -= 40;
+            for(uint i = 0; i < socialCollateral[msg.sender].length; i++) {
+                borrowers[socialCollateral[msg.sender][i]].creditScore -= 5;
+            }
+        }
     }
+
+    function calculatePositiveImpact() internal returns(int) {
+        int impact = 5; // base impact for repayment
+        impact += int(socialCollateral[msg.sender].length) * 2; // 2 points per validator
+        if(borrowers[msg.sender].hasTangibleCollateral) {
+            impact += 10; // additional boost for tangible collateral
+        }
+        return impact;
+    }
+
+    function VALIDATE_WITH_WORLD_ID(address _borrower) internal returns(bool) {
+        // External World ID system integration logic here
+    }
+
+    function VALIDATE_WITH_Molecule_Protocol(address _borrower) internal returns(bool) {
+        // External Molecule Protocol integration logic here
+    }
+
+    // More functions can be added for blacklist management, loan distribution, interest calculation, etc.
 }
