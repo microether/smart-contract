@@ -125,6 +125,9 @@ contract MicroEther {
         return loanIDCounter;
     }
 
+ // In the future, Guarantors have to be verified by World ID
+ // To guarantee that they are all individual people
+
     function guaranteeLoan(uint256 _loanId) external {
         Loan storage loan = loans[_loanId];
         require(loan.loanType == LoanType.SocialCollateral, "Only social collateral loans can be guaranteed");
