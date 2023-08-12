@@ -1,0 +1,28 @@
+contract LoanContract {
+    address public owner;
+    ILiquidityPool public liquidityPool;
+    IERC20 public token;  // Assuming the liquidity pool's token is ERC20 compliant.
+
+    constructor(address _liquidityPool, address _token) {
+        owner = msg.sender;
+        liquidityPool = ILiquidityPool(_liquidityPool);
+        token = IERC20(_token);
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not the contract owner");
+        _;
+    }
+    
+    function transferLiquidityToLoaner(address loaner, uint256 amount) external onlyOwner {
+        require(token.balanceOf(address(this)) >= amount, "Not enough liquidity");
+        
+        // Transfer the tokens from this contract to the loaner
+        require(token.transfer(loaner, amount), "Transfer failed");
+    }
+    
+    // In case you need to get liquidity into this contract
+    function depositLiquidity(uint256 amount) external {
+        require(token.transferFrom(msg.sender, address(this), amount), "TransferFrom failed");
+    }
+}
