@@ -1,98 +1,79 @@
-contract MicroEther {
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
 
-    struct Borrower {
-        address borrowerAddress;
-        int creditScore;
-        int totalLoansTaken;
-        int successfulRepayments;
-        bool hasTangibleCollateral;
+contract MicroLoan {
+
+    enum RepaymentMethod { Monthly, Quarterly, Yearly }
+    enum CollateralType { Social, Uncollateralised }
+    
+    struct Loan {
+        uint256 loanAmount;
+        uint256 dueDate;
+        RepaymentMethod repaymentMethod;
+        CollateralType collateralType;
+        address payable borrower;
+        address[] guarantors;
+        bool isFunded;
     }
 
-    mapping(address => Borrower) public borrowers;
-    mapping(address => address[]) public socialCollateral; // mapping borrowers to their validators
+    uint256 public loanCounter = 0;
+    mapping(uint256 => Loan) public loans;
 
-    address owner;
+    event LoanApplied(uint256 loanId, address indexed borrower);
+    event LoanGuaranteed(uint256 loanId, address indexed guarantor);
+    event LoanFunded(uint256 loanId);
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Not owner");
-        _;
-    }
-
-    // Initial setup
-    constructor() public {
-        owner = msg.sender;
-    }
-
-    // Borrower onboarding
-    function onboardBorrower(address _borrower, bool _hasTangibleCollateral) public onlyOwner {
-        require(VALIDATE_WITH_WORLD_ID(_borrower), "Invalid World ID");
-        require(VALIDATE_WITH_Molecule_Protocol(_borrower), "Failed Molecule Protocol Check");
-        borrowers[_borrower] = Borrower({
-            borrowerAddress: _borrower,
-            creditScore: 0,
-            totalLoansTaken: 0,
-            successfulRepayments: 0,
-            hasTangibleCollateral: _hasTangibleCollateral
+    function applyForLoan(
+        uint256 _loanAmount,
+        uint256 _dueDate,
+        RepaymentMethod _repaymentMethod,
+        CollateralType _collateralType
+    ) external returns(uint256) {
+        Loan memory newLoan = Loan({
+            loanAmount: _collateralType == CollateralType.Social ? _loanAmount : _loanAmount / 2, // Example: Uncollateralised loans can only get half the amount
+            dueDate: _dueDate,
+            repaymentMethod: _repaymentMethod,
+            collateralType: _collateralType,
+            borrower: payable(msg.sender),
+            guarantors: new address[](0),
+            isFunded: false
         });
-    }
 
-    // Add social collateral
-    function addSocialCollateral(address validator) public {
-        require(borrowers[msg.sender].borrowerAddress != address(0), "Borrower not registered");
-        require(borrowers[validator].borrowerAddress != address(0), "Validator not a registered borrower");
-        require(socialCollateral[msg.sender].length < 50, "Max validators reached");
-        socialCollateral[msg.sender].push(validator);
-    }
-
-    function applyForLoan(uint amount) public returns(bool) {
-        Borrower memory borrower = borrowers[msg.sender];
+        loanCounter++;
+        loans[loanCounter] = newLoan;
         
-        int historyImpact = (borrower.successfulRepayments / borrower.totalLoansTaken) * 100 - 100;
-        int socialCollateralImpact = int(socialCollateral[msg.sender].length);
-        if(socialCollateralImpact > 20) {
-            socialCollateralImpact = 20; 
+        emit LoanApplied(loanCounter, msg.sender);
+
+        return loanCounter;
+    }
+
+    function guaranteeLoan(uint256 _loanId) external {
+        require(loans[_loanId].collateralType == CollateralType.Social, "Loan doesn't support social collateral");
+        require(loans[_loanId].guarantors.length < 10, "Already have enough guarantors");
+        loans[_loanId].guarantors.push(msg.sender);
+
+        if (loans[_loanId].guarantors.length == 10) {
+            payoutLoanAmount(_loanId);
         }
-        int tangibleCollateralImpact = borrower.hasTangibleCollateral ? 40 : 0;
-        int creditScore = historyImpact + socialCollateralImpact + tangibleCollateralImpact;
 
-        require(creditScore >= -60, "Credit score too low");
-        borrower.creditScore = creditScore;
-
-        // Distribute funds logic here
-
-        return true;
+        emit LoanGuaranteed(_loanId, msg.sender);
     }
 
-    function loanRepayment(bool success) public {
-        Borrower storage borrower = borrowers[msg.sender];
-        borrower.totalLoansTaken += 1;
-        if(success) {
-            borrower.successfulRepayments += 1;
-            borrower.creditScore += calculatePositiveImpact();
-        } else {
-            borrower.creditScore -= 40;
-            for(uint i = 0; i < socialCollateral[msg.sender].length; i++) {
-                borrowers[socialCollateral[msg.sender][i]].creditScore -= 5;
-            }
-        }
+    function payoutLoanAmount(uint256 _loanId) internal {
+        require(!loans[_loanId].isFunded, "Loan already funded");
+        require(loans[_loanId].collateralType == CollateralType.Uncollateralised || loans[_loanId].guarantors.length == 10, "Not enough guarantors");
+        
+        loans[_loanId].isFunded = true;
+        loans[_loanId].borrower.transfer(loans[_loanId].loanAmount);
+
+        emit LoanFunded(_loanId);
     }
 
-    function calculatePositiveImpact() internal returns(int) {
-        int impact = 5; // base impact for repayment
-        impact += int(socialCollateral[msg.sender].length) * 2; // 2 points per validator
-        if(borrowers[msg.sender].hasTangibleCollateral) {
-            impact += 10; // additional boost for tangible collateral
-        }
-        return impact;
+    function checkAndTriggerWithdrawal(uint256 _loanId) external {
+        require(block.timestamp >= loans[_loanId].dueDate, "Loan is not due yet");
+        // Add logic for checking borrower's balance and triggering the withdrawal.
     }
 
-    function VALIDATE_WITH_WORLD_ID(address _borrower) internal returns(bool) {
-        // External World ID system integration logic here
-    }
-
-    function VALIDATE_WITH_Molecule_Protocol(address _borrower) internal returns(bool) {
-        // External Molecule Protocol integration logic here
-    }
-
-    // More functions can be added for blacklist management, loan distribution, interest calculation, etc.
+    // This function allows to add funds to the contract
+    function addFunds() external payable {}
 }
