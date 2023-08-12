@@ -2,15 +2,15 @@
 pragma solidity ^0.8.0;
 
 contract MicroLoan {
-
     enum RepaymentMethod { Monthly, Quarterly, Yearly }
     enum CollateralType { Social, Uncollateralised }
-    
+
     struct Loan {
         uint256 loanAmount;
         uint256 dueDate;
         RepaymentMethod repaymentMethod;
         CollateralType collateralType;
+        uint256 interestRate; // expressed as a percentage for simplicity
         address payable borrower;
         address[] guarantors;
         bool isFunded;
@@ -18,62 +18,99 @@ contract MicroLoan {
 
     uint256 public loanCounter = 0;
     mapping(uint256 => Loan) public loans;
+    mapping(address => int) public creditScore;
+
+    uint256 constant MIN_GUARANTORS = 10;
+    int constant UNC_COLLATERAL_THRESHOLD = 50;
+    int constant SCORE_DECREASE_BORROWER = 40;
+    int constant SCORE_INCREASE_BORROWER = 10;
+    int constant SCORE_DECREASE_GUARANTOR = 10;
+    int constant SCORE_INCREASE_GUARANTOR = 2;
+    int constant MINIMUM_SCORE = -70;
+    int constant MAX_SCORE = 100;
 
     event LoanApplied(uint256 loanId, address indexed borrower);
     event LoanGuaranteed(uint256 loanId, address indexed guarantor);
     event LoanFunded(uint256 loanId);
 
-    function applyForLoan(
-        uint256 _loanAmount,
-        uint256 _dueDate,
-        RepaymentMethod _repaymentMethod,
-        CollateralType _collateralType
-    ) external returns(uint256) {
-        Loan memory newLoan = Loan({
-            loanAmount: _collateralType == CollateralType.Social ? _loanAmount : _loanAmount / 2, // Example: Uncollateralised loans can only get half the amount
+    constructor() {
+        // Set initial credit score for new users
+        creditScore[msg.sender] = 0;
+    }
+
+    function calculateInterestRate(address borrower, CollateralType collateral) private view returns (uint256) {
+        int score = creditScore[borrower];
+        
+        // Sample dynamic interest rate calculation
+        if(collateral == CollateralType.Social) {
+            if(score > 80) return 2; // 2%
+            else if(score > 60) return 4; 
+            else return 6;
+        } else {
+            if(score > 80) return 10; 
+            else if(score > 60) return 12; 
+            else return 15;
+        }
+    }
+
+    function applyForLoan(uint256 _loanAmount, uint256 _dueDate, RepaymentMethod _repaymentMethod, CollateralType _collateralType) external returns(uint256) {
+        require(creditScore[msg.sender] > MINIMUM_SCORE, "Credit score too low");
+        if (_collateralType == CollateralType.Uncollateralised) {
+            require(creditScore[msg.sender] >= UNC_COLLATERAL_THRESHOLD, "Credit score insufficient for uncollateralised loan");
+        }
+
+        uint256 interestRate = calculateInterestRate(msg.sender, _collateralType);
+        
+        loans[loanCounter] = Loan({
+            loanAmount: _loanAmount,
             dueDate: _dueDate,
             repaymentMethod: _repaymentMethod,
             collateralType: _collateralType,
+            interestRate: interestRate,
             borrower: payable(msg.sender),
             guarantors: new address[](0),
             isFunded: false
         });
 
-        loanCounter++;
-        loans[loanCounter] = newLoan;
-        
         emit LoanApplied(loanCounter, msg.sender);
-
-        return loanCounter;
+        loanCounter++;
+        return loanCounter - 1;
     }
 
     function guaranteeLoan(uint256 _loanId) external {
-        require(loans[_loanId].collateralType == CollateralType.Social, "Loan doesn't support social collateral");
-        require(loans[_loanId].guarantors.length < 10, "Already have enough guarantors");
+        require(loans[_loanId].collateralType == CollateralType.Social, "Only social collateral loans can be guaranteed");
+        require(loans[_loanId].guarantors.length < MIN_GUARANTORS, "This loan already has enough guarantors");
+
         loans[_loanId].guarantors.push(msg.sender);
-
-        if (loans[_loanId].guarantors.length == 10) {
-            payoutLoanAmount(_loanId);
-        }
-
         emit LoanGuaranteed(_loanId, msg.sender);
+
+        if (loans[_loanId].guarantors.length == MIN_GUARANTORS) {
+            loans[_loanId].isFunded = true;
+            uint256 totalAmount = loans[_loanId].loanAmount + ((loans[_loanId].loanAmount * loans[_loanId].interestRate) / 100);
+            loans[_loanId].borrower.transfer(totalAmount);
+            emit LoanFunded(_loanId);
+        }
     }
 
-    function payoutLoanAmount(uint256 _loanId) internal {
-        require(!loans[_loanId].isFunded, "Loan already funded");
-        require(loans[_loanId].collateralType == CollateralType.Uncollateralised || loans[_loanId].guarantors.length == 10, "Not enough guarantors");
-        
-        loans[_loanId].isFunded = true;
-        loans[_loanId].borrower.transfer(loans[_loanId].loanAmount);
+    function repayLoan(uint256 _loanId) external payable {
+        require(msg.sender == loans[_loanId].borrower, "Only the borrower can repay");
+        uint256 expectedRepayment = loans[_loanId].loanAmount + ((loans[_loanId].loanAmount * loans[_loanId].interestRate) / 100);
+        require(msg.value == expectedRepayment, "Incorrect repayment amount");
 
-        emit LoanFunded(_loanId);
+        if (block.timestamp <= loans[_loanId].dueDate) {
+            creditScore[msg.sender] += SCORE_INCREASE_BORROWER;
+            for (uint256 i = 0; i < loans[_loanId].guarantors.length; i++) {
+                creditScore[loans[_loanId].guarantors[i]] += SCORE_INCREASE_GUARANTOR;
+            }
+        } else {
+            creditScore[msg.sender] -= SCORE_DECREASE_BORROWER;
+            for (uint256 i = 0; i < loans[_loanId].guarantors.length; i++) {
+                creditScore[loans[_loanId].guarantors[i]] -= SCORE_DECREASE_GUARANTOR;
+            }
+        }
     }
 
-    function checkAndTriggerWithdrawal(uint256 _loanId) external {
-        require(block.timestamp >= loans[_loanId].dueDate, "Loan is not due yet");
-        // Add logic for checking borrower's balance and triggering the withdrawal.
-    }
-
-    // This function allows to add funds to the contract
     function addFunds() external payable {}
+
+    receive() external payable {}
 }
