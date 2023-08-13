@@ -94,7 +94,7 @@ contract MicroEther {
     ) public returns (uint256) {
         require(moleculeGeneralSanctionController.check(regionalIds, msg.sender), "Address is sanctioned."); 
         require(creditScores[msg.sender] >= MINIMUM_SCORE, "Credit score too low");
-        require(_numGuarantors >= 1 && _numGuarantors <= 20, "Invalid number of guarantors");
+        require(_numGuarantors >= 5 && _numGuarantors <= 20, "Invalid number of guarantors");
         
         uint256 interestRate = calculateInterestRate(msg.sender, _loanType);
         
