@@ -20,7 +20,6 @@ contract MicroEther {
     /*function myFunction() external {
         require(moleculeGeneralSanctionController.check(regionalIds, msg.sender), "Address is sanctioned.");
         require(myCustomController.check(msg.sender), "Address is not authorized.");
-        // Access allowed to function code here
     }*/
 
     LiquidityPool private liquidityPool;
@@ -31,10 +30,10 @@ contract MicroEther {
     enum LoanType { Uncollateralized, SocialCollateral }
 
     struct Loan {
-        address payable borrower; // added borrower field
+        address payable borrower;
         uint256 amount;
         uint256 dueDate;
-        uint256 interestRate; // added interestRate field
+        uint256 interestRate;
         RepaymentMethod repaymentMethod;
         LoanType loanType;
         int8 numGuarantors;
@@ -43,7 +42,7 @@ contract MicroEther {
     }
 
     uint256 private loanIDCounter = 0;
-    mapping(address => int) public creditScores; // Changed to int
+    mapping(address => int) public creditScores; 
     mapping(uint256 => Loan) public loans;
     mapping(uint256 => address[]) public loanGuarantors;
 
@@ -64,7 +63,6 @@ contract MicroEther {
 
     constructor() {
         liquidityPool = LiquidityPool(LIQUIDITY_POOL_ADDRESS);
-        // Rest of the constructor
         creditScores[msg.sender] = 0;
     }
 
@@ -109,10 +107,10 @@ contract MicroEther {
 
         loanIDCounter++;
         loans[loanIDCounter] = Loan({
-            borrower: payable(msg.sender), // set borrower field
+            borrower: payable(msg.sender), 
             amount: _loanAmount,
             dueDate: _dueDate,
-            interestRate: interestRate, // set interestRate field
+            interestRate: interestRate,
             repaymentMethod: _repaymentMethod,
             loanType: _loanType,
             numGuarantors: _numGuarantors,
@@ -138,7 +136,6 @@ contract MicroEther {
 
         if ((int256)(loanGuarantors[_loanId].length) == loan.numGuarantors) {
             loan.isFunded = true;
-            // Implement the funding logic here. You will need a pool of funds to draw from.
             emit LoanFunded(_loanId);
         }
     }
@@ -180,13 +177,11 @@ contract MicroEther {
         loan.actualGuarantors++;
 
         if (loan.actualGuarantors == loan.numGuarantors) {
-            // If the desired number of guarantors is reached, you can implement further logic.
-            // For example, you might notify the borrower that their loan is now fully vouched for.
             emit LoanFunded(_loanID);
         }
     }
 
-    // Modified function when loan is funded
+
     function fundLoan(uint256 _loanId) internal {
         Loan storage loan = loans[_loanId];
         require(loan.isFunded == false, "Loan already funded");
